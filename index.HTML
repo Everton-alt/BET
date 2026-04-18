@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analista Pro - Full Analysis v3.3</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        :root { --primary: #2c3e50; --accent: #27ae60; --bg: #f8f9fa; --danger: #e74c3c; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); padding: 20px; }
+        .container { max-width: 900px; margin: auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .tabs { display: flex; gap: 5px; margin-bottom: 20px; border-bottom: 2px solid #eee; }
+        .tab { padding: 12px 25px; cursor: pointer; border-radius: 8px 8px 0 0; background: #eee; }
+        .tab.active { background: var(--primary); color: white; }
+        .content { display: none; }
+        .content.active { display: block; }
+        .grid-inputs { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+        input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; background: var(--accent); color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .btn-limpar { background: var(--danger); margin-top: 10px; font-size: 12px; padding: 5px; width: auto; }
+        .dashboard { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 25px; }
+        .card { border: 1px solid #eee; padding: 15px; border-radius: 8px; }
+        .card h4 { margin-top: 0; color: var(--primary); border-bottom: 1px solid #eee; }
+        .stats-list { list-style: none; padding: 0; }
+        .stats-list li { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dashed #eee; }
+        .status-badge { padding: 5px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; display: inline-block; }
+        .badge-on { background: #d4edda; color: #155724; }
+        .badge-off { background: #f8d7da; color: #721c24; }
+        .no-data-alert { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; padding: 20px; border-radius: 8px; text-align: center; margin-top: 20px; grid-column: span 2; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h2>🎯 Analista Pro <small style="font-size: 12px; color: #666;">v3.3 - xG Stats</small></h2>
+        <div id="indicadorDados"></div>
+    </div>
+
+    <div class="tabs">
+        <div class="tab active" id="tab1" onclick="openTab('aba-importar')">Configurações/Base</div>
+        <div class="tab" id="tab2" onclick="openTab('aba-buscar')">Análise de Jogo</div>
+    </div>
+
+    <div id="aba-importar" class="content active">
+        <div id="areaUpload">
+            <h4>Importar Nova Base de Dados</h4>
+            <input type="file" id="fileInput" accept=".xlsx, .xls">
+        </div>
+        
+        <div id="areaGerenciar" style="display:none; margin-top: 20px; padding: 15px; background: #f9f9f9; border-radius: 8px;">
+            <h4>Base de Dados Ativa</h4>
+            <p id="infoBase"></p>
+            <button class="btn-limpar" onclick="limparDados()">Apagar Base e Importar Nova</button>
+        </div>
+    </div>
+
+    <div id="aba-buscar" class="content">
+        <div class="grid-inputs">
+            <div><label>Prob. Casa (1)</label><input type="number" id="buscaCasa" step="0.01" value="0.50"></div>
+            <div><label>Prob. Empate (X)</label><input type="number" id="buscaEmpate" step="0.01" value="0.25"></div>
+            <div><label>Prob. Fora (2)</label><input type="number" id="buscaFora" step="0.01" value="0.25"></div>
+        </div>
+        <button onclick="buscarDados()">EXECUTAR ANÁLISE COMPLETA</button>
+
+        <div id="resultadoBusca" style="display:none;">
+            <p style="text-align: center; font-style: italic; color: #666;" id="infoFiltro"></p>
+            <div class="dashboard" id="dashboard"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let dadosExcel = [];
+    const TOLERANCIA_MAXIMA = 0.10;
+
+    window.onload = function() {
+        const dadosSalvos = localStorage.getItem('baseDadosEsportiva');
+        if (dadosSalvos) {
+            dadosExcel = JSON.parse(dadosSalvos);
+            atualizarInterface(true);
+        } else {
+            atualizarInterface(false);
+        }
+    };
+
+    function atualizarInterface(temDados) {
+        const indicador = document.getElementById('indicadorDados');
+        const areaUpload = document.getElementById('areaUpload');
+        const areaGerenciar = document.getElementById('areaGerenciar');
+        const infoBase = document.getElementById('infoBase');
+
+        if (temDados) {
+            indicador.innerHTML = `<span class="status-badge badge-on">● Base Carregada (${dadosExcel.length} jogos)</span>`;
+            areaUpload.style.display = "none";
+            areaGerenciar.style.display = "block";
+            infoBase.innerText = `Atualmente existem ${dadosExcel.length} registros salvos.`;
+            openTab('aba-buscar');
+        } else {
+            indicador.innerHTML = `<span class="status-badge badge-off">○ Sem Dados</span>`;
+            areaUpload.style.display = "block";
+            areaGerenciar.style.display = "none";
+        }
+    }
+
+    function openTab(tabName) {
+        let contents = document.getElementsByClassName("content");
+        for (let c of contents) c.classList.remove("active");
+        let tabs = document.getElementsByClassName("tab");
+        for (let t of tabs) t.classList.remove("active");
+        document.getElementById(tabName).classList.add("active");
+        if(tabName === 'aba-importar') document.getElementById('tab1').classList.add("active");
+        else document.getElementById('tab2').classList.add("active");
+    }
+
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        const reader = new FileReader();
+        reader.onload = function(evt) {
+            const data = new Uint8Array(evt.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const tempDados = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+            localStorage.setItem('baseDadosEsportiva', JSON.stringify(tempDados));
+            dadosExcel = tempDados;
+            atualizarInterface(true);
+        };
+        reader.readAsArrayBuffer(file);
+    });
+
+    function limparDados() {
+        if(confirm("Deseja apagar a base?")) {
+            localStorage.removeItem('baseDadosEsportiva');
+            dadosExcel = [];
+            atualizarInterface(false);
+            openTab('aba-importar');
+        }
+    }
+
+    function buscarDados() {
+        if (dadosExcel.length === 0) return alert("Nenhum dado encontrado.");
+        
+        const c = parseFloat(document.getElementById('buscaCasa').value);
+        const e = parseFloat(document.getElementById('buscaEmpate').value);
+        const f = parseFloat(document.getElementById('buscaFora').value);
+
+        let similares = dadosExcel.map(jogo => {
+            let dist = Math.sqrt(
+                Math.pow((jogo['Prob, Casa (1)'] || 0) - c, 2) + 
+                Math.pow((jogo['Prob, Empate (X)'] || 0) - e, 2) + 
+                Math.pow((jogo['Prob, Fora (2)'] || 0) - f, 2)
+            );
+            let peso = dist === 0 ? 10 : 1 / (dist + 0.001);
+            return { ...jogo, dist, peso };
+        })
+        .filter(jogo => jogo.dist <= TOLERANCIA_MAXIMA)
+        .sort((a, b) => a.dist - b.dist)
+        .slice(0, 30);
+
+        renderizarCards(similares);
+    }
+
+    function renderizarCards(jogos) {
+        const dashboard = document.getElementById('dashboard');
+        const resultadoBusca = document.getElementById('resultadoBusca');
+        resultadoBusca.style.display = "block";
+
+        if (jogos.length === 0) {
+            dashboard.innerHTML = `<div class="no-data-alert"><h3>⚠️ Não há dados fidedignos para este cenário</h3></div>`;
+            return;
+        }
+
+        let pesoTotal = 0;
+        let stats = { gC: 0, gV: 0, vC: 0, vE: 0, vV: 0, ambos: 0, o15: 0, o25: 0, o35: 0 };
+
+        jogos.forEach(j => {
+            const p = j.peso;
+            const c = parseInt(j['Placar Casa']) || 0;
+            const v = parseInt(j['Placar Visitante']) || 0;
+            const totalGols = c + v;
+            
+            pesoTotal += p;
+            stats.gC += (c * p);
+            stats.gV += (v * p);
+
+            if (c > v) stats.vC += p; else if (c === v) stats.vE += p; else stats.vV += p;
+            if (c > 0 && v > 0) stats.ambos += p;
+            if (totalGols > 1.5) stats.o15 += p;
+            if (totalGols > 2.5) stats.o25 += p;
+            if (totalGols > 3.5) stats.o35 += p;
+        });
+
+        const calc = (val) => (val / pesoTotal * 100).toFixed(1);
+        document.getElementById('infoFiltro').innerText = `Análise baseada em ${jogos.length} jogos com alta similaridade.`;
+
+        dashboard.innerHTML = `
+            <div class="card">
+                <h4>⚽ Gols Esperados (xG)</h4>
+                <ul class="stats-list">
+                    <li><span>xG Casa:</span> <b>${(stats.gC/pesoTotal).toFixed(2)}</b></li>
+                    <li><span>xG Fora:</span> <b>${(stats.gV/pesoTotal).toFixed(2)}</b></li>
+                    <li><span>xG Total Jogo:</span> <b style="color:var(--accent)">${((stats.gC+stats.gV)/pesoTotal).toFixed(2)}</b></li>
+                </ul>
+            </div>
+            <div class="card">
+                <h4>🏆 Probabilidades de Resultado</h4>
+                <ul class="stats-list">
+                    <li><span>Vitória Casa (1):</span> <b>${calc(stats.vC)}%</b></li>
+                    <li><span>Empate (X):</span> <b>${calc(stats.vE)}%</b></li>
+                    <li><span>Vitória Fora (2):</span> <b>${calc(stats.vV)}%</b></li>
+                </ul>
+            </div>
+            <div class="card">
+                <h4>🛡️ Chance Dupla (DC)</h4>
+                <ul class="stats-list">
+                    <li><span>Casa ou Empate (1X):</span> <b>${calc(stats.vC + stats.vE)}%</b></li>
+                    <li><span>Casa ou Fora (12):</span> <b>${calc(stats.vC + stats.vV)}%</b></li>
+                    <li><span>Empate ou Fora (X2):</span> <b>${calc(stats.vE + stats.vV)}%</b></li>
+                </ul>
+            </div>
+            <div class="card">
+                <h4>🔥 Mercados de Gols</h4>
+                <ul class="stats-list">
+                    <li><span>Ambos Marcam:</span> <b>${calc(stats.ambos)}%</b></li>
+                    <li><span>Over 2.5 Gols:</span> <b>${calc(stats.o25)}%</b></li>
+                    <li><span>Under 2.5 Gols:</span> <b>${(100 - calc(stats.o25)).toFixed(1)}%</b></li>
+                </ul>
+            </div>
+            <div class="card">
+                <h4>📊 Outros Mercados (Over)</h4>
+                <ul class="stats-list">
+                    <li><span>Over 1.5 Gols:</span> <b>${calc(stats.o15)}%</b></li>
+                    <li><span>Over 3.5 Gols:</span> <b>${calc(stats.o35)}%</b></li>
+                </ul>
+            </div>
+            <div class="card">
+                <h4>🛡️ Outros Mercados (Under)</h4>
+                <ul class="stats-list">
+                    <li><span>Under 1.5 Gols:</span> <b>${(100 - calc(stats.o15)).toFixed(1)}%</b></li>
+                    <li><span>Under 3.5 Gols:</span> <b>${(100 - calc(stats.o35)).toFixed(1)}%</b></li>
+                </ul>
+            </div>
+        `;
+    }
+</script>
+</body>
+</html>
